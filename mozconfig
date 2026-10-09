@@ -1,4 +1,4 @@
-mk_add_options MOZ_OBJDIR=/home/rob/firefox-qd/obj-qd
+mk_add_options MOZ_OBJDIR=/home/rob/firefox/obj-qd
 mk_add_options MOZ_MAKE_FLAGS="-j8"
 ac_add_options --enable-application=browser
 ac_add_options --enable-optimize

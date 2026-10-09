@@ -4,12 +4,12 @@ Firefox main with a private Harmony FreeType build and triangular RGB text
 sampling. No custom FreeType rasterizer or API changes are required. The panel
 geometry is estimated, not measured.
 
-The source checkout is `firefox-157.0.1/`, branch `qd/harmony-minimal`, based on
+The source checkout is `firefox-157.0.1/`, branch `freetype-lcd-geometry`, based on
 `main`. `source.json` pins the official upstream repository and base commit.
 `patches/firefox-harmony.patch` applies to that upstream commit; regenerate
 it from committed source with `scripts/export-patch.py`.
 
-Build with `MOZCONFIG=/home/rob/firefox-qd/mozconfig ./mach build` from the source
+Build with `MOZCONFIG=/home/rob/firefox/mozconfig ./mach build` from the source
 checkout. `firefox-qd --qd-build` runs the result with a separate test profile;
 add `--qd-mode gray` for ordinary grayscale. The normal launcher uses the
 installed build at `~/.local/opt/firefox-qd`. To replace it, run `./mach package`
@@ -23,8 +23,9 @@ belongs in ignored `artifacts/` and `logs/` directories.
 
 This is a local integration patch, not an upstream submission. The rebased
 160.0a1 source has not been built or runtime-tested; the installed browser and
-existing test binary remain the validated 157.0.1 build. Review identified
-stripe-only bounds in Skia as a remaining clipping risk. Upstream submission still requires general
+existing test binary remain the validated 157.0.1 build. Skia bounds now expand on both axes in the QD mode; direct FreeType probes
+validate containment, but the updated browser paths still need runtime testing.
+Upstream submission still requires general
 geometry configuration, an optional bundled-library build, regression tests,
 and validation of the supported platform configurations. The grayscale
 experiment is preserved by `grayscale-experiment-2026-10-09` in this repository,

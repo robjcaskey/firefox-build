@@ -2,6 +2,6 @@
   "version": "160.0a1",
   "checkout": "firefox-157.0.1",
   "repository": "https://github.com/mozilla-firefox/firefox.git",
-  "base": "83cebcf5a522bf49667fd07084f04e8497de0eba",
+  "base": "e2c1c2881a9b09a165277e924908ce8be6bbdf1b",
   "branch": "main"
 }

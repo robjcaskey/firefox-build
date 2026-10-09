@@ -31,13 +31,24 @@ int main(int argc, char **argv) {
   FT_Vector geometry[3]={{-21,-11},{0,21},{21,-11}};
   if((e=FT_Library_SetLcdGeometry(lib,geometry))) fail("set geometry",e);
   int sizes[]={12,16,19,24,32,48,72}; unsigned checks=0, differences=0;
+  unsigned clipped=0, stripe_clipped=0;
   for(unsigned size=0;size<sizeof(sizes)/sizeof(*sizes);size++) {
     FT_Set_Pixel_Sizes(face,0,sizes[size]);
     for(unsigned ch=33;ch<127;ch++) {
       memset(actual,0,sizeof(actual)); memset(expected,0,sizeof(expected));
       if((e=FT_Load_Char(face,ch,FT_LOAD_NO_BITMAP|FT_LOAD_TARGET_NORMAL))) fail("load LCD",e);
+      FT_BBox bounds;
+      FT_Outline_Get_CBox(&face->glyph->outline,&bounds);
+      int left=bounds.xMin>>6, right=(bounds.xMax+63)>>6;
+      int top=-((bounds.yMax+63)>>6), bottom=-(bounds.yMin>>6);
       if((e=FT_Render_Glyph(face->glyph,vertical ? FT_RENDER_MODE_LCD_V : FT_RENDER_MODE_LCD))) fail("render LCD",e);
       copy_bitmap(face->glyph,actual,vertical ? 2 : 1,0);
+      for(int y=0;y<SIDE;y++) for(int x=0;x<SIDE;x++) {
+        if(!(actual[(y*SIDE+x)*3] || actual[(y*SIDE+x)*3+1] || actual[(y*SIDE+x)*3+2])) continue;
+        int px=x-48, py=y-128;
+        if(px<left-1 || px>=right+1 || py<top-1 || py>=bottom+1) clipped++;
+        if(px<left-!vertical || px>=right+!vertical || py<top-vertical || py>=bottom+vertical) stripe_clipped++;
+      }
       for(int c=0;c<3;c++) {
         if((e=FT_Load_Char(face,ch,FT_LOAD_NO_BITMAP|FT_LOAD_TARGET_NORMAL))) fail("load gray",e);
         FT_Outline_Translate(&face->glyph->outline,vertical ? -geometry[c].y : -geometry[c].x,vertical ? geometry[c].x : -geometry[c].y);
@@ -50,5 +61,6 @@ int main(int argc, char **argv) {
   }
   FT_Done_Face(face); FT_Done_FreeType(lib);
   printf("%u glyph/size cases, %u coverage-byte differences against three independently shifted grayscale rasters\n", checks,differences);
-  return differences ? 1 : 0;
+  printf("%u ink pixels outside two-axis bounds; %u outside stripe-only bounds\n",clipped,stripe_clipped);
+  return differences || clipped || !stripe_clipped ? 1 : 0;
 }

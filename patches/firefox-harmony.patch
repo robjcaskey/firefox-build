@@ -1,5 +1,5 @@
 diff --git a/config/external/freetype2/moz.build b/config/external/freetype2/moz.build
-index 547e570456..7384e2a34f 100644
+index 547e570456c..7384e2a34f7 100644
 --- a/config/external/freetype2/moz.build
 +++ b/config/external/freetype2/moz.build
 @@ -8,5 +8,7 @@ if CONFIG["MOZ_TREE_FREETYPE"]:
@@ -12,7 +12,7 @@ index 547e570456..7384e2a34f 100644
      OS_LIBS += CONFIG["FT2_LIBS"]
 diff --git a/config/external/freetype2/private/freetype/config/public-macros.h b/config/external/freetype2/private/freetype/config/public-macros.h
 new file mode 100644
-index 0000000000..38444d3c0e
+index 00000000000..38444d3c0e9
 --- /dev/null
 +++ b/config/external/freetype2/private/freetype/config/public-macros.h
 @@ -0,0 +1,12 @@
@@ -29,7 +29,7 @@ index 0000000000..38444d3c0e
 +
 +#endif  // CONFIG_EXTERNAL_FREETYPE2_PRIVATE_FREETYPE_CONFIG_PUBLIC_MACROS_H_
 diff --git a/gfx/2d/Factory.cpp b/gfx/2d/Factory.cpp
-index d52f761dc9..a90efc6b1c 100644
+index d52f761dc99..a90efc6b1cc 100644
 --- a/gfx/2d/Factory.cpp
 +++ b/gfx/2d/Factory.cpp
 @@ -2,6 +2,9 @@
@@ -54,10 +54,10 @@ index d52f761dc9..a90efc6b1c 100644
  
 diff --git a/gfx/2d/FreeTypeConfig.cpp b/gfx/2d/FreeTypeConfig.cpp
 new file mode 100644
-index 0000000000..be1ecbbb88
+index 00000000000..49b2ab8fbe8
 --- /dev/null
 +++ b/gfx/2d/FreeTypeConfig.cpp
-@@ -0,0 +1,18 @@
+@@ -0,0 +1,22 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -68,9 +68,13 @@ index 0000000000..be1ecbbb88
 +#include <cstdlib>
 +#include <cstring>
 +
-+extern "C" void mozilla_ConfigureFreeType(FT_Library library) {
++extern "C" FT_Bool mozilla_FreeTypeLcdGeometryEnabled(void) {
 +  const char* mode = std::getenv("FIREFOX_QD_MODE");
-+  if (!mode || std::strcmp(mode, "subpixel")) {
++  return mode && !std::strcmp(mode, "subpixel");
++}
++
++extern "C" void mozilla_ConfigureFreeType(FT_Library library) {
++  if (!mozilla_FreeTypeLcdGeometryEnabled()) {
 +    return;
 +  }
 +  FT_Vector geometry[3] = {{-21, -11}, {0, 21}, {21, -11}};
@@ -78,10 +82,10 @@ index 0000000000..be1ecbbb88
 +}
 diff --git a/gfx/2d/FreeTypeConfig.h b/gfx/2d/FreeTypeConfig.h
 new file mode 100644
-index 0000000000..ab83938779
+index 00000000000..61256497e36
 --- /dev/null
 +++ b/gfx/2d/FreeTypeConfig.h
-@@ -0,0 +1,15 @@
+@@ -0,0 +1,16 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -93,12 +97,13 @@ index 0000000000..ab83938779
 +extern "C" {
 +#endif
 +void mozilla_ConfigureFreeType(FT_Library library);
++FT_Bool mozilla_FreeTypeLcdGeometryEnabled(void);
 +#ifdef __cplusplus
 +}
 +#endif
 +#endif
 diff --git a/gfx/2d/moz.build b/gfx/2d/moz.build
-index 058076fbf8..4061a61a96 100644
+index 058076fbf82..4061a61a969 100644
 --- a/gfx/2d/moz.build
 +++ b/gfx/2d/moz.build
 @@ -260,3 +260,7 @@ SOURCE_HEADERS += [
@@ -110,7 +115,7 @@ index 058076fbf8..4061a61a96 100644
 +    EXPORTS.mozilla.gfx += ["FreeTypeConfig.h"]
 +    SOURCES += ["FreeTypeConfig.cpp"]
 diff --git a/gfx/cairo/cairo/src/cairo-ft-font.c b/gfx/cairo/cairo/src/cairo-ft-font.c
-index c637942e45..74c7f2d3d8 100644
+index c637942e455..74c7f2d3d85 100644
 --- a/gfx/cairo/cairo/src/cairo-ft-font.c
 +++ b/gfx/cairo/cairo/src/cairo-ft-font.c
 @@ -39,6 +39,9 @@
@@ -188,7 +193,7 @@ index c637942e45..74c7f2d3d8 100644
      }
  
 diff --git a/gfx/skia/skia/src/ports/SkFontHost_FreeType.cpp b/gfx/skia/skia/src/ports/SkFontHost_FreeType.cpp
-index c229c444e6..51a65d1216 100644
+index c229c444e6f..217bb4dc77e 100644
 --- a/gfx/skia/skia/src/ports/SkFontHost_FreeType.cpp
 +++ b/gfx/skia/skia/src/ports/SkFontHost_FreeType.cpp
 @@ -5,6 +5,9 @@
@@ -211,7 +216,20 @@ index c229c444e6..51a65d1216 100644
  
          // Subpixel anti-aliasing may be unfiltered until the LCD filter is set.
          // Newer versions may still need this, so this test with side effects must come first.
-@@ -2066,6 +2072,9 @@ SkFontScanner_FreeType::SkFontScanner_FreeType() : fLibrary(nullptr) {
+@@ -1178,6 +1184,12 @@ void SkScalerContext_FreeType::updateGlyphBoundsIfSubpixel(const SkGlyph& glyph,
+ void SkScalerContext_FreeType::updateGlyphBoundsIfLCD(GlyphMetrics* mx) {
+     if (mx->maskFormat == SkMask::kLCD16_Format && !mx->bounds.isEmpty()) {
+         mx->bounds.roundOut(&mx->bounds);
++#if defined(MOZ_TREE_FREETYPE) && defined(MOZ_WIDGET_GTK)
++        if (mozilla_FreeTypeLcdGeometryEnabled()) {
++            mx->bounds.outset(1, 1);
++            return;
++        }
++#endif
+         if (fLCDIsVert) {
+             mx->bounds.fBottom += 1;
+             mx->bounds.fTop -= 1;
+@@ -2066,6 +2078,9 @@ SkFontScanner_FreeType::SkFontScanner_FreeType() : fLibrary(nullptr) {
      }
      FT_Add_Default_Modules(fLibrary);
      FT_Set_Default_Properties(fLibrary);
@@ -221,8 +239,35 @@ index c229c444e6..51a65d1216 100644
  }
  
  SkFontScanner_FreeType::~SkFontScanner_FreeType() {
+diff --git a/gfx/skia/skia/src/ports/SkFontHost_cairo.cpp b/gfx/skia/skia/src/ports/SkFontHost_cairo.cpp
+index 10a9b7fe2ba..75e140d2aa2 100644
+--- a/gfx/skia/skia/src/ports/SkFontHost_cairo.cpp
++++ b/gfx/skia/skia/src/ports/SkFontHost_cairo.cpp
+@@ -8,6 +8,10 @@
+ 
+ #include "src/ports/SkFontHost_FreeType_common.h"
+ 
++#if defined(MOZ_TREE_FREETYPE) && defined(MOZ_WIDGET_GTK)
++#include "mozilla/gfx/FreeTypeConfig.h"
++#endif
++
+ #include "src/core/SkAdvancedTypefaceMetrics.h"
+ #include "src/core/SkFDot6.h"
+ #include "include/core/SkFontMetrics.h"
+@@ -713,6 +717,11 @@ SkScalerContext::GlyphMetrics SkScalerContext_CairoFT::generateMetrics(const SkG
+             // doesn't add padding, it is safe to modify the glyph's bounds
+             // here. generateGlyphImage will detect if the mask is smaller
+             // than the bounds and clip things appropriately.
++#if defined(MOZ_TREE_FREETYPE) && defined(MOZ_WIDGET_GTK)
++            if (mozilla_FreeTypeLcdGeometryEnabled()) {
++                bounds.outset(1, 1);
++            } else
++#endif
+             if (fRec.fFlags & kLCD_Vertical_Flag) {
+                 bounds.outset(0, 1);
+             } else {
 diff --git a/gfx/thebes/moz.build b/gfx/thebes/moz.build
-index ca63ab3822..0e16c92ecf 100644
+index ca63ab38229..0e16c92ecf5 100644
 --- a/gfx/thebes/moz.build
 +++ b/gfx/thebes/moz.build
 @@ -292,7 +292,7 @@ LOCAL_INCLUDES += [
@@ -235,7 +280,7 @@ index ca63ab3822..0e16c92ecf 100644
  
  if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
 diff --git a/gfx/wr/wr_glyph_rasterizer/src/platform/unix/font.rs b/gfx/wr/wr_glyph_rasterizer/src/platform/unix/font.rs
-index d53f1462d9..852d6eab1d 100644
+index d53f1462d93..852d6eab1d6 100644
 --- a/gfx/wr/wr_glyph_rasterizer/src/platform/unix/font.rs
 +++ b/gfx/wr/wr_glyph_rasterizer/src/platform/unix/font.rs
 @@ -26,7 +26,10 @@ use crate::gamma_lut::{ColorLut, GammaLut};
@@ -317,7 +362,7 @@ index d53f1462d9..852d6eab1d 100644
              let padding = (lcd_extra_pixels * 64) as FT_Pos;
              if font.flags.contains(FontInstanceFlags::LCD_VERTICAL) {
 diff --git a/modules/freetype2/moz.build b/modules/freetype2/moz.build
-index 4e1752373c..4e428bb5e0 100644
+index 4e1752373c6..4e428bb5e00 100644
 --- a/modules/freetype2/moz.build
 +++ b/modules/freetype2/moz.build
 @@ -4,6 +4,10 @@
@@ -332,7 +377,7 @@ index 4e1752373c..4e428bb5e0 100644
      'include',
  ]
 diff --git a/toolkit/moz.configure b/toolkit/moz.configure
-index 20b0ec30a5..3f82999daa 100644
+index 20b0ec30a54..3f82999daa9 100644
 --- a/toolkit/moz.configure
 +++ b/toolkit/moz.configure
 @@ -1373,7 +1373,7 @@ set_config("MOZ_SYSTEM_WEBP", depends(when=system_webp)(lambda: True))
