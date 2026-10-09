@@ -1,0 +1,8 @@
+downloads/
+logs/
+firefox-157.0.1/
+obj-*/
+artifacts/
+
+__pycache__/
+*.pyc

@@ -1,0 +1,43 @@
+<!doctype html><meta charset="utf-8"><title>Firefox QD rendering paths</title>
+<style>
+html{scrollbar-width:none}
+@font-face{font-family:VariableTest;src:url('Variable.ttf');font-weight:100 900}
+@font-face{font-family:DownloadedCaskey;src:url('CaskeyMono-Regular.ttf')}
+body{margin:0;padding:12px;background:white;color:black;font:18px sans-serif}
+.row{height:58px;white-space:nowrap;font-family:VariableTest}
+#thin{font-weight:200}#heavy{font-weight:850}
+canvas{display:block;margin:4px 0;width:800px;height:55px}
+#transparent{background:repeating-linear-gradient(90deg,#abc 0 40px,#def 40px 80px)}
+.panel{width:900px;height:70px;overflow:hidden;background:#263749;color:white;margin:10px 0}
+#opacity{opacity:.6}#rotation{transform:rotate(3deg);transform-origin:left}
+#fractional{transform:translate(.5px,.25px)}
+</style>
+<div id="thin" class="row">Variable font: Hamburgefonts minimum 0123456789 ꨀꨁꨂꨃ</div>
+<div id="heavy" class="row">Variable font: Hamburgefonts minimum 0123456789 ꨀꨁꨂꨃ</div>
+<svg width="900" height="65"><text x="0" y="40" style="font:32px VariableTest;font-weight:650">SVG variable text: Aa gmw in rn ꨀꨁꨂ</text></svg>
+<canvas id="opaque"></canvas><canvas id="transparent"></canvas>
+<div class="panel"><div id="opacity">Translucent text over a colored background: minimum in r wwww</div></div>
+<div class="panel"><div id="rotation">Rotated text: minimum in r wwww</div></div>
+<div class="panel"><div id="fractional">Fractional translation: minimum in r wwww</div></div>
+<div style="font:22px DownloadedCaskey">Webfont hints and alternates: in inn r rn ar — e g l a</div>
+<div style="height:1600px;background:linear-gradient(white,#ddd)">Scroll away and back to check cached tiles.</div>
+<script>
+window.pathChecks={};
+document.fonts.load('200 18px VariableTest').then(()=>document.fonts.load('850 18px VariableTest')).then(()=>document.fonts.load('22px DownloadedCaskey')).then(()=>{
+ for(const id of ['opaque','transparent']){
+  const c=document.getElementById(id);c.width=Math.round(800*devicePixelRatio);c.height=Math.round(55*devicePixelRatio);
+  const ctx=c.getContext('2d',{alpha:id==='transparent'});ctx.scale(devicePixelRatio,devicePixelRatio);
+  if(id==='opaque'){ctx.fillStyle='white';ctx.fillRect(0,0,800,55)}
+  ctx.font='650 28px VariableTest';ctx.fillStyle='black';ctx.fillText('Canvas variable: Hamburgefonts ꨀꨁꨂꨃ',0,35);
+  const bytes=ctx.getImageData(0,0,c.width,c.height).data;let hash=2166136261,ink=0,chromatic=0;
+  for(let i=0;i<bytes.length;i++){hash=Math.imul(hash^bytes[i],16777619)>>>0}
+  for(let i=0;i<bytes.length;i+=4){if(id==='opaque'?bytes[i]<255:bytes[i+3]>0)ink++;if(bytes[i]!==bytes[i+1]||bytes[i+1]!==bytes[i+2])chromatic++}
+  pathChecks[id]={hash,ink,chromatic};
+ }
+ pathChecks.variableLoaded=document.fonts.check('200 18px VariableTest')&&document.fonts.check('850 18px VariableTest');
+ pathChecks.thin=document.querySelector('#thin').getBoundingClientRect().toJSON();
+ pathChecks.heavy=document.querySelector('#heavy').getBoundingClientRect().toJSON();
+ document.documentElement.dataset.pathChecks=JSON.stringify(pathChecks);
+ document.documentElement.dataset.ready='true';
+});
+</script>

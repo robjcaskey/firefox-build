@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /home/rob/.local/bin/firefox-qd "$@"

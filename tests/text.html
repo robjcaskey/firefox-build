@@ -1,0 +1,28 @@
+<!doctype html><meta charset="utf-8"><title>Firefox QD rendering comparison</title>
+<style>
+@font-face { font-family: DownloadedCaskey; src:url('CaskeyMono-Regular.ttf'); }
+* {box-sizing:border-box} body {margin:0; background:white;color:black;font:16px sans-serif}
+section {padding:12px; height:220px; overflow:hidden; display:flex;gap:24px}
+section.dark {background:black;color:white} section.color {background:#315674;color:#f5deaa}
+p{margin:5px 0} .serif{font-family:serif} .mono{font-family:DownloadedCaskey,monospace}
+.controls{padding:12px; height:120px} canvas{display:block} .small{font-size:11px}
+</style>
+<div class="controls"><span id="metrics"></span><canvas id="calibration" style="width:400px;height:30px"></canvas><p>Physical-pixel stripes above; ordinary text below.</p></div>
+<script>
+for(const theme of ['light','dark','color']){
+ const section=document.createElement('section');section.className=theme;
+ for(const family of ['sans','serif','mono']){
+  const col=document.createElement('div');col.className=family;
+  col.innerHTML='<p>minimum reading: in inn r rn</p><p><b>Bold: e g l a w m 0123456789</b></p><p><i>Italic curves &amp; punctuation</i></p><p class="small">Small text: Hm ill WAV ffi</p><p>Áëîöü Åg ß Ω μ → ⇧ 🙂</p><p style="opacity:.65">Translucent text: in r www</p><p style="transform:rotate(2deg)">Rotated: smooth curves</p>';
+  section.append(col);
+ }
+ document.body.append(section);
+}
+const canvas=document.querySelector('canvas'),dpr=devicePixelRatio;
+canvas.width=Math.round(400*dpr);canvas.height=Math.round(30*dpr);
+const ctx=canvas.getContext('2d');for(let x=0;x<canvas.width;x++){
+ ctx.fillStyle=x%2?'#fff':'#000';ctx.fillRect(x,0,1,canvas.height);
+}
+document.querySelector('#metrics').textContent=`DPR ${dpr}, framebuffer stripe width ${canvas.width}`;
+document.fonts.ready.then(()=>document.documentElement.dataset.ready='true');
+</script>

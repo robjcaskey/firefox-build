@@ -1,0 +1,346 @@
+diff --git a/config/external/freetype2/moz.build b/config/external/freetype2/moz.build
+index 547e570456..7384e2a34f 100644
+--- a/config/external/freetype2/moz.build
++++ b/config/external/freetype2/moz.build
+@@ -8,5 +8,7 @@ if CONFIG["MOZ_TREE_FREETYPE"]:
+     DIRS += [
+         "/modules/freetype2",
+     ]
++    if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
++        OS_LIBS += [flag for flag in CONFIG["_FONTCONFIG_LIBS"] if flag != "-lfreetype"]
+ else:
+     OS_LIBS += CONFIG["FT2_LIBS"]
+diff --git a/config/external/freetype2/private/freetype/config/public-macros.h b/config/external/freetype2/private/freetype/config/public-macros.h
+new file mode 100644
+index 0000000000..38444d3c0e
+--- /dev/null
++++ b/config/external/freetype2/private/freetype/config/public-macros.h
+@@ -0,0 +1,12 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++/* Keep the private static library out of GTK's system symbol lookup. */
++#ifndef CONFIG_EXTERNAL_FREETYPE2_PRIVATE_FREETYPE_CONFIG_PUBLIC_MACROS_H_
++#define CONFIG_EXTERNAL_FREETYPE2_PRIVATE_FREETYPE_CONFIG_PUBLIC_MACROS_H_
++
++#include_next <freetype/config/public-macros.h>
++#undef FT_PUBLIC_FUNCTION_ATTRIBUTE
++#define FT_PUBLIC_FUNCTION_ATTRIBUTE __attribute__((visibility("hidden")))
++
++#endif  // CONFIG_EXTERNAL_FREETYPE2_PRIVATE_FREETYPE_CONFIG_PUBLIC_MACROS_H_
+diff --git a/gfx/2d/Factory.cpp b/gfx/2d/Factory.cpp
+index d52f761dc9..a90efc6b1c 100644
+--- a/gfx/2d/Factory.cpp
++++ b/gfx/2d/Factory.cpp
+@@ -2,6 +2,9 @@
+  * License, v. 2.0. If a copy of the MPL was not distributed with this
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
++#if defined(MOZ_TREE_FREETYPE) && defined(MOZ_WIDGET_GTK)
++#  include "mozilla/gfx/FreeTypeConfig.h"
++#endif
+ #include "2D.h"
+ #include "Swizzle.h"
+ 
+@@ -515,6 +518,9 @@ FT_Library Factory::NewFTLibrary() {
+   if (FT_Init_FreeType(&library) != FT_Err_Ok) {
+     return nullptr;
+   }
++#  if defined(MOZ_TREE_FREETYPE) && defined(MOZ_WIDGET_GTK)
++  mozilla_ConfigureFreeType(library);
++#  endif
+   return library;
+ }
+ 
+diff --git a/gfx/2d/FreeTypeConfig.cpp b/gfx/2d/FreeTypeConfig.cpp
+new file mode 100644
+index 0000000000..be1ecbbb88
+--- /dev/null
++++ b/gfx/2d/FreeTypeConfig.cpp
+@@ -0,0 +1,18 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++#include "FreeTypeConfig.h"
++
++#include "mozilla/Assertions.h"
++#include FT_LCD_FILTER_H
++#include <cstdlib>
++#include <cstring>
++
++extern "C" void mozilla_ConfigureFreeType(FT_Library library) {
++  const char* mode = std::getenv("FIREFOX_QD_MODE");
++  if (!mode || std::strcmp(mode, "subpixel")) {
++    return;
++  }
++  FT_Vector geometry[3] = {{-21, -11}, {0, 21}, {21, -11}};
++  MOZ_RELEASE_ASSERT(FT_Library_SetLcdGeometry(library, geometry) == FT_Err_Ok);
++}
+diff --git a/gfx/2d/FreeTypeConfig.h b/gfx/2d/FreeTypeConfig.h
+new file mode 100644
+index 0000000000..ab83938779
+--- /dev/null
++++ b/gfx/2d/FreeTypeConfig.h
+@@ -0,0 +1,15 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++#ifndef mozilla_gfx_FreeTypeConfig_h
++#define mozilla_gfx_FreeTypeConfig_h
++#include <ft2build.h>
++#include FT_FREETYPE_H
++#ifdef __cplusplus
++extern "C" {
++#endif
++void mozilla_ConfigureFreeType(FT_Library library);
++#ifdef __cplusplus
++}
++#endif
++#endif
+diff --git a/gfx/2d/moz.build b/gfx/2d/moz.build
+index 058076fbf8..4061a61a96 100644
+--- a/gfx/2d/moz.build
++++ b/gfx/2d/moz.build
+@@ -260,3 +260,7 @@ SOURCE_HEADERS += [
+     "SwizzleGenericDecls.h",
+     "SwizzleHelpers.h",
+ ]
++
++if CONFIG["MOZ_TREE_FREETYPE"] and CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
++    EXPORTS.mozilla.gfx += ["FreeTypeConfig.h"]
++    SOURCES += ["FreeTypeConfig.cpp"]
+diff --git a/gfx/cairo/cairo/src/cairo-ft-font.c b/gfx/cairo/cairo/src/cairo-ft-font.c
+index c637942e45..74c7f2d3d8 100644
+--- a/gfx/cairo/cairo/src/cairo-ft-font.c
++++ b/gfx/cairo/cairo/src/cairo-ft-font.c
+@@ -39,6 +39,9 @@
+  */
+ 
+ #define _DEFAULT_SOURCE /* for strdup() */
++#if defined(MOZ_TREE_FREETYPE) && defined(MOZ_WIDGET_GTK)
++#include "mozilla/gfx/FreeTypeConfig.h"
++#endif
+ #include "cairoint.h"
+ 
+ #include "cairo-error-private.h"
+@@ -85,6 +88,12 @@
+ #endif
+ #include <dlfcn.h>
+ 
++#ifdef MOZ_TREE_FREETYPE
++#define CAIRO_FT_SYMBOL(name) (&name)
++#else
++#define CAIRO_FT_SYMBOL(name) dlsym (RTLD_DEFAULT, #name)
++#endif
++
+ /*  FreeType version older than 2.11 does not have the FT_RENDER_MODE_SDF enum value in FT_Render_Mode */
+ #if FREETYPE_MAJOR > 2 || (FREETYPE_MAJOR == 2 && FREETYPE_MINOR >= 11)
+ #define HAVE_FT_RENDER_MODE_SDF 1
+@@ -367,6 +376,9 @@ _cairo_ft_unscaled_font_map_create (void)
+ 
+     if (unlikely (FT_Init_FreeType (&font_map->ft_library)))
+ 	goto FAIL;
++#if defined(MOZ_TREE_FREETYPE) && defined(MOZ_WIDGET_GTK)
++    mozilla_ConfigureFreeType(font_map->ft_library);
++#endif
+ 
+     font_map->num_open_faces = 0;
+ 
+@@ -520,9 +532,9 @@ _cairo_ft_unscaled_font_init (cairo_ft_unscaled_font_t *unscaled,
+ 
+         static int firstTime = 1;
+         if (firstTime) {
+-            getVar = (GetVarFunc) dlsym (RTLD_DEFAULT, "FT_Get_MM_Var");
+-            doneVar = (DoneVarFunc) dlsym (RTLD_DEFAULT, "FT_Done_MM_Var");
+-            getVarDesignCoords = (GetVarDesignCoordsFunc) dlsym (RTLD_DEFAULT, "FT_Get_Var_Design_Coordinates");
++            getVar = (GetVarFunc) CAIRO_FT_SYMBOL(FT_Get_MM_Var);
++            doneVar = (DoneVarFunc) CAIRO_FT_SYMBOL(FT_Done_MM_Var);
++            getVarDesignCoords = (GetVarDesignCoordsFunc) CAIRO_FT_SYMBOL(FT_Get_Var_Design_Coordinates);
+             firstTime = 0;
+         }
+ 
+@@ -2404,10 +2416,10 @@ cairo_ft_apply_variations (FT_Face                 face,
+ 
+     static int firstTime = 1;
+     if (firstTime) {
+-        getVar = (GetVarFunc) dlsym (RTLD_DEFAULT, "FT_Get_MM_Var");
+-        doneVar = (DoneVarFunc) dlsym (RTLD_DEFAULT, "FT_Done_MM_Var");
+-        getVarDesignCoords = (GetVarDesignCoordsFunc) dlsym (RTLD_DEFAULT, "FT_Get_Var_Design_Coordinates");
+-        setVarDesignCoords = (SetVarDesignCoordsFunc) dlsym (RTLD_DEFAULT, "FT_Set_Var_Design_Coordinates");
++        getVar = (GetVarFunc) CAIRO_FT_SYMBOL(FT_Get_MM_Var);
++        doneVar = (DoneVarFunc) CAIRO_FT_SYMBOL(FT_Done_MM_Var);
++        getVarDesignCoords = (GetVarDesignCoordsFunc) CAIRO_FT_SYMBOL(FT_Get_Var_Design_Coordinates);
++        setVarDesignCoords = (SetVarDesignCoordsFunc) CAIRO_FT_SYMBOL(FT_Set_Var_Design_Coordinates);
+         firstTime = 0;
+     }
+ 
+@@ -3749,9 +3761,9 @@ _cairo_ft_is_synthetic (void	        *abstract_font,
+ 
+     static int firstTime = 1;
+     if (firstTime) {
+-        getVar = (GetVarFunc) dlsym (RTLD_DEFAULT, "FT_Get_MM_Var");
+-        doneVar = (DoneVarFunc) dlsym (RTLD_DEFAULT, "FT_Done_MM_Var");
+-        getVarBlendCoords = (GetVarBlendCoordsFunc) dlsym (RTLD_DEFAULT, "FT_Get_Var_Blend_Coordinates");
++        getVar = (GetVarFunc) CAIRO_FT_SYMBOL(FT_Get_MM_Var);
++        doneVar = (DoneVarFunc) CAIRO_FT_SYMBOL(FT_Done_MM_Var);
++        getVarBlendCoords = (GetVarBlendCoordsFunc) CAIRO_FT_SYMBOL(FT_Get_Var_Blend_Coordinates);
+         firstTime = 0;
+     }
+ 
+diff --git a/gfx/skia/skia/src/ports/SkFontHost_FreeType.cpp b/gfx/skia/skia/src/ports/SkFontHost_FreeType.cpp
+index c229c444e6..51a65d1216 100644
+--- a/gfx/skia/skia/src/ports/SkFontHost_FreeType.cpp
++++ b/gfx/skia/skia/src/ports/SkFontHost_FreeType.cpp
+@@ -5,6 +5,9 @@
+  * found in the LICENSE file.
+  */
+ 
++#if defined(MOZ_TREE_FREETYPE) && defined(MOZ_WIDGET_GTK)
++#include "mozilla/gfx/FreeTypeConfig.h"
++#endif
+ #include "include/core/SkBBHFactory.h"
+ #include "include/core/SkBitmap.h"
+ #include "include/core/SkCanvas.h"
+@@ -176,6 +179,9 @@ public:
+         }
+         FT_Add_Default_Modules(fLibrary);
+         FT_Set_Default_Properties(fLibrary);
++#if defined(MOZ_TREE_FREETYPE) && defined(MOZ_WIDGET_GTK)
++        mozilla_ConfigureFreeType(fLibrary);
++#endif
+ 
+         // Subpixel anti-aliasing may be unfiltered until the LCD filter is set.
+         // Newer versions may still need this, so this test with side effects must come first.
+@@ -2066,6 +2072,9 @@ SkFontScanner_FreeType::SkFontScanner_FreeType() : fLibrary(nullptr) {
+     }
+     FT_Add_Default_Modules(fLibrary);
+     FT_Set_Default_Properties(fLibrary);
++#if defined(MOZ_TREE_FREETYPE) && defined(MOZ_WIDGET_GTK)
++    mozilla_ConfigureFreeType(fLibrary);
++#endif
+ }
+ 
+ SkFontScanner_FreeType::~SkFontScanner_FreeType() {
+diff --git a/gfx/thebes/moz.build b/gfx/thebes/moz.build
+index ca63ab3822..0e16c92ecf 100644
+--- a/gfx/thebes/moz.build
++++ b/gfx/thebes/moz.build
+@@ -292,7 +292,7 @@ LOCAL_INCLUDES += [
+ if CONFIG["MOZ_WIDGET_TOOLKIT"] in ("android", "gtk"):
+     DEFINES["MOZ_ENABLE_FREETYPE"] = True
+ 
+-if CONFIG["MOZ_WIDGET_TOOLKIT"] in ("android"):
++if CONFIG["MOZ_TREE_FREETYPE"]:
+     CXXFLAGS += CONFIG["CAIRO_FT_CFLAGS"]
+ 
+ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
+diff --git a/gfx/wr/wr_glyph_rasterizer/src/platform/unix/font.rs b/gfx/wr/wr_glyph_rasterizer/src/platform/unix/font.rs
+index d53f1462d9..852d6eab1d 100644
+--- a/gfx/wr/wr_glyph_rasterizer/src/platform/unix/font.rs
++++ b/gfx/wr/wr_glyph_rasterizer/src/platform/unix/font.rs
+@@ -26,7 +26,10 @@ use crate::gamma_lut::{ColorLut, GammaLut};
+ use crate::rasterizer::{FontInstance, GlyphFormat, GlyphKey};
+ use crate::rasterizer::{GlyphRasterError, GlyphRasterResult, RasterizedGlyph};
+ use crate::types::FastHashMap;
+-#[cfg(any(not(target_os = "android"), feature = "dynamic_freetype"))]
++#[cfg(any(
++    feature = "dynamic_freetype",
++    not(any(target_os = "android", all(feature = "gecko", target_os = "linux")))
++))]
+ use libc::{dlsym, RTLD_DEFAULT};
+ use libc::free;
+ use std::{cmp, mem, ptr, slice};
+@@ -35,6 +38,16 @@ use std::ffi::CString;
+ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+ 
+ 
++#[cfg(all(feature = "gecko", target_os = "linux"))]
++extern "C" {
++    fn mozilla_ConfigureFreeType(library: FT_Library);
++}
++
++lazy_static! {
++    static ref QD_GEOMETRY: bool =
++        std::env::var("FIREFOX_QD_MODE").as_deref() == Ok("subpixel");
++}
++
+ // These constants are not present in the freetype
+ // bindings due to bindgen not handling the way
+ // the macros are defined.
+@@ -76,7 +89,10 @@ pub fn unimplemented(error: FT_Error) -> bool {
+ }
+ 
+ // Use dlsym to check for symbols. If not available. just return an unimplemented error.
+-#[cfg(any(not(target_os = "android"), feature = "dynamic_freetype"))]
++#[cfg(any(
++    feature = "dynamic_freetype",
++    not(any(target_os = "android", all(feature = "gecko", target_os = "linux")))
++))]
+ macro_rules! ft_dyn_fn {
+     ($func_name:ident($($arg_name:ident:$arg_type:ty),*) -> FT_Error) => {
+         #[allow(non_snake_case)]
+@@ -98,8 +114,10 @@ macro_rules! ft_dyn_fn {
+     }
+ }
+ 
+-// On Android, just statically link in the symbols...
+-#[cfg(all(target_os = "android", not(feature = "dynamic_freetype")))]
++#[cfg(all(
++    any(target_os = "android", all(feature = "gecko", target_os = "linux")),
++    not(feature = "dynamic_freetype")
++))]
+ macro_rules! ft_dyn_fn {
+     ($($proto:tt)+) => { extern "C" { fn $($proto)+; } }
+ }
+@@ -194,6 +212,8 @@ impl FontCache {
+         let mut lib: FT_Library = ptr::null_mut();
+         let result = unsafe { FT_Init_FreeType(&mut lib) };
+         if succeeded(result) {
++            #[cfg(all(feature = "gecko", target_os = "linux"))]
++            unsafe { mozilla_ConfigureFreeType(lib) };
+             // Ensure the library uses the default LCD filter initially.
+             unsafe { FT_Library_SetLcdFilter(lib, FT_LcdFilter::FT_LCD_FILTER_DEFAULT) };
+         } else {
+@@ -633,6 +653,14 @@ impl FontContext {
+             // if support for the patent-encumbered LCD filter algorithms is not built in.
+             // Thus, the only reasonable way to guess padding is to unconditonally add it if
+             // subpixel AA is used.
++            // Harmony's triangular geometry extends coverage on both axes.
++            if *QD_GEOMETRY {
++                cbox.xMin -= 64;
++                cbox.xMax += 64;
++                cbox.yMin -= 64;
++                cbox.yMax += 64;
++                return;
++            }
+             let lcd_extra_pixels = 1;
+             let padding = (lcd_extra_pixels * 64) as FT_Pos;
+             if font.flags.contains(FontInstanceFlags::LCD_VERTICAL) {
+diff --git a/modules/freetype2/moz.build b/modules/freetype2/moz.build
+index 4e1752373c..4e428bb5e0 100644
+--- a/modules/freetype2/moz.build
++++ b/modules/freetype2/moz.build
+@@ -4,6 +4,10 @@
+ 
+ DEFINES['FT2_BUILD_LIBRARY'] = True
+ 
++if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk':
++    LOCAL_INCLUDES += ['/config/external/freetype2/private']
++    CFLAGS += ['-fvisibility=hidden']
++
+ LOCAL_INCLUDES += [
+     'include',
+ ]
+diff --git a/toolkit/moz.configure b/toolkit/moz.configure
+index 20b0ec30a5..3f82999daa 100644
+--- a/toolkit/moz.configure
++++ b/toolkit/moz.configure
+@@ -1373,7 +1373,7 @@ set_config("MOZ_SYSTEM_WEBP", depends(when=system_webp)(lambda: True))
+ # ==============================================================
+ @depends(target)
+ def tree_freetype(target):
+-    if target.os == "Android":
++    if target.os == "Android" or target.kernel == "Linux":
+         return True
+ 
+ 
